@@ -1,0 +1,42 @@
+name: Daily Attention Report
+
+on:
+  schedule:
+    # 每天 UTC 时间 02:00 运行 (确保 Wikimedia 已经生成昨天的数据。通常 UTC 00:00 后几小时内生成)
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 允许手动点击按钮触发测试
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 允许 Action 向仓库提交代码
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: |
+          pip3 install -r requirements.txt
+
+      - name: Run script
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+        run: python src/main.py
+
+      - name: Commit and push data
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add data/*.json
+          git commit -m "Add daily report data for $(date +'%Y-%m-%d')" || exit 0
+          git push

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 # ================= 配置区域 =================
 REPO_URL = "https://github.com/anonym-g/Attention"
+TWITTER_USERNAME = "trailblaziger"
 
 # 语言配置
 LANG_CONFIG = [
@@ -181,7 +182,6 @@ def construct_tweet(lang_config, date_str, articles_data, chart_link):
 
     return tweet_text
 
-
 def save_data(date_str, data):
     """
     将数据保存到 data/ 文件夹
@@ -198,6 +198,45 @@ def save_data(date_str, data):
         print(f"-> Data saved to: {file_path}")
     except Exception as e:
         print(f"Error saving data: {e}")
+
+def update_readme(date_str, tweet_id):
+    """
+    更新 README.md，在 Tweet List 区域追加新的推文链接
+    """
+    # 获取项目根目录
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    readme_path = os.path.join(base_dir, "README.md")
+
+    link = f"https://x.com/{TWITTER_USERNAME}/status/{tweet_id}"
+    line_to_add = f"#### {date_str}: {link}"
+
+    try:
+        if not os.path.exists(readme_path):
+            print("README.md not found, skipping update.")
+            return
+
+        with open(readme_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # 防止重复添加
+        if link in content:
+            print(f"Link already in README: {link}")
+            return
+
+        with open(readme_path, 'a', encoding='utf-8') as f:
+            # 如果没有标题，先添加标题
+            if "## Tweet List" not in content:
+                f.write("\n\n## Tweet List\n")
+
+            # 确保新行前有换行符 (如果文件末尾不是换行)
+            elif not content.endswith('\n'):
+                f.write("\n")
+
+            f.write(f"{line_to_add}\n")
+            print(f"-> Added to README: {line_to_add}")
+
+    except Exception as e:
+        print(f"Error updating README: {e}")
 
 def get_twitter_client():
     api_key = os.environ.get("TWITTER_API_KEY")
@@ -261,6 +300,10 @@ def main():
                 # 测试有效，更新ID
                 last_successful_id = resp.data['id']
                 print(f"Posted {lang['code']} successfully. ID: {last_successful_id}")
+
+                # 如果是英文版，将链接写入 README.md
+                if lang['code'] == 'en':
+                    update_readme(date_str, last_successful_id)
 
             except Exception as e:
                 # 失败则打印错误，last_successful_id 保持不变

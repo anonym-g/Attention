@@ -15,3 +15,8 @@ Attention/
 ├── requirements.txt
 └── README.md
 ```
+
+## Tweet List
+
+#### 2025-11-19: https://x.com/trailblaziger/status/1991369684428755293
+#### 2025-11-20: https://x.com/trailblaziger/status/1991704915681378329

@@ -20,3 +20,4 @@ Attention/
 
 #### 2025-11-19: https://x.com/trailblaziger/status/1991369684428755293
 #### 2025-11-20: https://x.com/trailblaziger/status/1991704915681378329
+#### 2025-11-21: https://x.com/trailblaziger/status/1992065689515954568

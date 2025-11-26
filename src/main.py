@@ -1,9 +1,11 @@
 import os
 import json
+import time
 import requests
 import tweepy
 import urllib.parse
 from datetime import datetime, timedelta, timezone
+from playwright.sync_api import sync_playwright, ViewportSize, Browser, FloatRect
 
 # ================= 配置区域 =================
 REPO_URL = "https://github.com/anonym-g/Attention"
@@ -35,15 +37,13 @@ IGNORE_PREFIXES = (
     'Help:', 'Portal:', 'Draft:', 'Talk:', 'User:', 'MediaWiki:', 'Book:',
 
     # --- 中文 (ZH) ---
-    'Special:', 'Wikipedia:', 'File:', 'Category:', 'Template:', 'Help:', 'Portal:', 'Draft:', 'Talk:', 'User:',
     '文件:', '分类:', '模版:', '模板:', '帮助:', '传送门:', '草稿:', '讨论:', '用户:', '话题:',
 
     # --- 日语 (JA) ---
-    '特別:', 'Wikipedia:', 'ファイル:', 'Category:', 'Template:', 'Help:', 'Portal:', 'Draft:', 'Talk:', 'User:',
-    '利用者:', 'ノート:', '画像:',
+    '特別:', 'ファイル:', '利用者:', 'ノート:', '画像:',
 
     # --- 德语 (DE) ---
-    'Spezial:', 'Wikipedia:', 'Datei:', 'Kategorie:', 'Vorlage:', 'Hilfe:', 'Portal:', 'Diskussion:', 'Benutzer:',
+    'Spezial:', 'Datei:', 'Kategorie:', 'Vorlage:', 'Hilfe:', 'Diskussion:', 'Benutzer:',
 
     # --- 法语 (FR) ---
     'Spécial:', 'Wikipédia:', 'Fichier:', 'Catégorie:', 'Modèle:', 'Aide:', 'Portail:', 'Discussion:', 'Utilisateur:',
@@ -52,7 +52,7 @@ IGNORE_PREFIXES = (
     'Служебная:', 'Википедия:', 'Файл:', 'Категория:', 'Шаблон:', 'Справка:', 'Портал:', 'Обсуждение:', 'Участник:',
 
     # --- 意大利语 (IT) ---
-    'Speciale:', 'Wikipedia:', 'File:', 'Categoria:', 'Template:', 'Aiuto:', 'Portale:', 'Discussione:', 'Utente:',
+    'Speciale:', 'Categoria:', 'Aiuto:', 'Portale:', 'Discussione:', 'Utente:',
 )
 
 # 2. 精确匹配黑名单 (主要是各国首页、搜索页、404、隐私声明等)
@@ -238,7 +238,128 @@ def update_readme(date_str, tweet_id):
     except Exception as e:
         print(f"Error updating README: {e}")
 
-def get_twitter_client():
+def ensure_picture_dir(date_str, lang_code):
+    """创建图片保存目录"""
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(base_dir, "pictures", date_str, lang_code)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+def capture_screenshots(url, save_dir):
+    """使用 Playwright 截取 Logarithmic Line Chart 和 Pie Chart"""
+    if not url:
+        return []
+
+    line_path = os.path.join(save_dir, "line.png")
+    pie_path = os.path.join(save_dir, "pie.png")
+
+    if os.path.exists(line_path) and os.path.exists(pie_path):
+        print(f"Images already exist in {save_dir}, skipping.")
+        return [line_path, pie_path]
+
+    images = []
+
+    try:
+        with sync_playwright() as p:
+            print("Launching browser...")
+            browser: Browser = p.chromium.launch(headless=True)
+
+            viewport_size: ViewportSize = {"width": 2560, "height": 1440}
+            page = browser.new_page(viewport=viewport_size)
+
+            print(f"Navigating to: {url}")
+            page.goto(url, wait_until='networkidle', timeout=90000)
+
+            try:
+                page.wait_for_selector("canvas", state="visible", timeout=30000)
+                time.sleep(5)
+            except Exception as e:
+                print(f"Warning: Canvas not detected or slow loading: {e}")
+
+            def take_smart_screenshot(file_path):
+                """智能截图"""
+                try:
+                    canvas = page.locator("canvas").first
+                    box = canvas.bounding_box()
+                    if box:
+                        bottom_y = box['y'] + box['height'] + 180
+                        clip_rect: FloatRect = {
+                            'x': 0.0,
+                            'y': 0.0,
+                            'width': 2560.0,
+                            'height': float(bottom_y)
+                        }
+                        page.screenshot(path=file_path, clip=clip_rect)
+                        print(f"Captured (Smart): {file_path}")
+                    else:
+                        raise Exception("Canvas bounding box is None")
+                except Exception as err:
+                    print(f"Smart screenshot failed ({err}), falling back to viewport screenshot.")
+                    page.screenshot(path=file_path)
+                    print(f"Captured (Fallback): {file_path}")
+
+            # 1. Logarithmic Line Chart
+            try:
+                # 使用 exact=True 避免匹配到 "Automatically use logarithmic"
+                # 或者直接定位 class
+                log_label = page.locator(".logarithmic-scale").first
+                if log_label.is_visible():
+                    log_label.click()
+                    time.sleep(3)
+                else:
+                    # 备选：精确文本匹配
+                    page.get_by_text("Logarithmic scale", exact=True).click()
+                    time.sleep(3)
+            except Exception as e:
+                print(f"Error toggling Logarithmic: {e}")
+
+            take_smart_screenshot(line_path)
+            images.append(line_path)
+
+            # 2. Pie Chart
+            try:
+                # 使用 CSS 类定位按钮，避免匹配到模态框标题 "Chart types"
+                chart_btn = page.locator(".btn-chart-type").first
+                if chart_btn.is_visible():
+                    chart_btn.click()
+                    time.sleep(1)
+
+                    # 在下拉菜单中点击 "Pie"
+                    pie_option = page.get_by_text("Pie", exact=True)
+                    if pie_option.is_visible():
+                        pie_option.click()
+                        time.sleep(3)
+                    else:
+                        print("Pie option not visible.")
+                else:
+                    print("Chart type button not found.")
+            except Exception as e:
+                print(f"Error toggling Pie chart: {e}")
+
+            take_smart_screenshot(pie_path)
+            images.append(pie_path)
+
+            browser.close()
+
+    except Exception as e:
+        print(f"Playwright critical error: {e}")
+
+    return images
+
+def get_twitter_auth_v1():
+    """获取 v1.1 API (用于上传媒体)"""
+    api_key = os.environ.get("TWITTER_API_KEY")
+    api_secret = os.environ.get("TWITTER_API_SECRET")
+    access_token = os.environ.get("TWITTER_ACCESS_TOKEN")
+    access_token_secret = os.environ.get("TWITTER_ACCESS_TOKEN_SECRET")
+
+    if not all([api_key, api_secret, access_token, access_token_secret]):
+        return None
+
+    auth = tweepy.OAuth1UserHandler(api_key, api_secret, access_token, access_token_secret)
+    return tweepy.API(auth)
+
+def get_twitter_client_v2():
     api_key = os.environ.get("TWITTER_API_KEY")
     api_secret = os.environ.get("TWITTER_API_SECRET")
     access_token = os.environ.get("TWITTER_ACCESS_TOKEN")
@@ -261,14 +382,13 @@ def main():
     print(f"--- Report Date: {date_str} ---")
 
     report_data = {"date": date_str, "results": []}
-    client = get_twitter_client()
 
-    # 维护一个有效ID
-    # 如果中间某条失败，这个ID不更新，下一条会自动回复上一个成功的推文，保证Thread不断
-    last_successful_id = None
+    # 1. 准备阶段：抓取数据，生成链接、截图，构建文本
+    tweet_queue = []
 
+    print(">>> Phase 1: Preparing content (Data & Screenshots)...")
     for lang in LANG_CONFIG:
-        print(f"Processing {lang['code']}...")
+        print(f"\nProcessing {lang['code']}...")
 
         articles_data = get_top_articles(lang['code'], yesterday)
         if not articles_data:
@@ -277,38 +397,82 @@ def main():
 
         link = generate_link(lang['project'], articles_data, yesterday)
 
+        # --- 截图 ---
+        print("Taking screenshots...")
+        pic_dir = ensure_picture_dir(date_str, lang['code'])
+        image_paths = capture_screenshots(link, pic_dir)
+
+        # --- 构建推文文本 ---
+        tweet_text = construct_tweet(lang, date_str, articles_data, link)
+        print(f"[Content Preview] {tweet_text[:50]}...")
+
+        # 存入数据报告
         report_data["results"].append({
             "lang": lang['code'],
             "data": articles_data,
-            "link": link
+            "link": link,
+            "images": image_paths
         })
 
-        tweet_text = construct_tweet(lang, date_str, articles_data, link)
+        # 存入发推队列
+        tweet_queue.append({
+            "lang_code": lang['code'],
+            "text": tweet_text,
+            "images": image_paths
+        })
 
-        print(f"\n[Preview {lang['code']}] Length: {len(tweet_text)}")
-        print(tweet_text)
-        print("-" * 30)
+    # 2. 发送阶段：批量上传图片并发送 Thread
+    print("\n>>> Phase 2: Posting Tweets...")
 
-        if client:
+    client_v2 = get_twitter_client_v2()
+    api_v1 = get_twitter_auth_v1()
+    last_successful_id = None
+
+    if client_v2 and api_v1:
+        for item in tweet_queue:
+            lang_code = item['lang_code']
+            text = item['text']
+            images = item['images']
+
             try:
-                # 尝试发送
+                media_ids = []
+                # 上传图片
+                for img_path in images:
+                    if os.path.exists(img_path):
+                        print(f"[{lang_code}] Uploading {img_path}...")
+                        media = api_v1.media_upload(filename=img_path)
+                        media_ids.append(media.media_id)
+
+                # 发推
+                print(f"[{lang_code}] Sending tweet...")
                 if last_successful_id:
-                    resp = client.create_tweet(text=tweet_text, in_reply_to_tweet_id=last_successful_id)
+                    resp = client_v2.create_tweet(
+                        text=text,
+                        media_ids=media_ids if media_ids else None,
+                        in_reply_to_tweet_id=last_successful_id
+                    )
                 else:
-                    resp = client.create_tweet(text=tweet_text)
+                    resp = client_v2.create_tweet(
+                        text=text,
+                        media_ids=media_ids if media_ids else None
+                    )
 
                 # 测试有效，更新ID
                 last_successful_id = resp.data['id']
-                print(f"Posted {lang['code']} successfully. ID: {last_successful_id}")
+                print(f"[{lang_code}] Posted successfully. ID: {last_successful_id}")
 
-                # 如果是英文版，将链接写入 README.md
-                if lang['code'] == 'en':
+                if lang_code == 'en':
                     update_readme(date_str, last_successful_id)
 
-            except Exception as e:
-                # 失败则打印错误，last_successful_id 保持不变
-                print(f"Failed to post {lang['code']}: {e}")
+                # 稍微等待避免速率限制
+                time.sleep(2)
 
+            except Exception as e:
+                print(f"[{lang_code}] Failed to post: {e}")
+    else:
+        print("Twitter credentials missing, skipping post phase.")
+
+    # 3. 保存数据
     save_data(date_str, report_data)
     print("\nAll done.")
 

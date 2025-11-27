@@ -5,7 +5,7 @@ import requests
 import tweepy
 import urllib.parse
 from datetime import datetime, timedelta, timezone
-from playwright.sync_api import sync_playwright, ViewportSize, Browser, FloatRect
+from playwright.sync_api import sync_playwright, ViewportSize, Browser
 
 # ================= 配置区域 =================
 REPO_URL = "https://github.com/anonym-g/Attention"
@@ -78,6 +78,14 @@ SPECIFIC_IGNORE_TERMS = [
     'Cookie_Statement', 'Privacy_policy',
     'Wikipedia:About', 'Wikipedia:General_disclaimer'
 ]
+
+# ================= 截图配置 =================
+
+# 基础视口尺寸 (决定页面布局，16:9)
+BASE_VIEWPORT_WIDTH = 1920
+BASE_VIEWPORT_HEIGHT = 1080
+# 设备像素比例 (决定输出分辨率，2 即宽高翻番)
+DEVICE_SCALE_FACTOR = 2
 
 def get_date_str(date_obj):
     return date_obj.strftime("%Y-%m-%d")
@@ -245,17 +253,22 @@ def ensure_picture_dir(date_str, lang_code):
     os.makedirs(path, exist_ok=True)
     return path
 
-def capture_screenshots(url, save_dir):
-    """使用 Playwright 截取 Logarithmic Line Chart 和 Pie Chart"""
-    if not url:
+def capture_screenshots(urls, save_dir):
+    """使用 Playwright 截取 Top Views, Logarithmic Line Chart 和 Pie Chart"""
+    # urls 是一个字典，格式: {'topviews': '...', 'pageviews': '...'}
+    topviews_url = urls.get('topviews')
+    pageviews_url = urls.get('pageviews')
+
+    if not topviews_url or not pageviews_url:
         return []
 
+    topviews_path = os.path.join(save_dir, "topviews.png")
     line_path = os.path.join(save_dir, "line.png")
     pie_path = os.path.join(save_dir, "pie.png")
 
-    if os.path.exists(line_path) and os.path.exists(pie_path):
+    if all(os.path.exists(p) for p in [topviews_path, line_path, pie_path]):
         print(f"Images already exist in {save_dir}, skipping.")
-        return [line_path, pie_path]
+        return [topviews_path, line_path, pie_path]
 
     images = []
 
@@ -263,80 +276,90 @@ def capture_screenshots(url, save_dir):
         with sync_playwright() as p:
             print("Launching browser...")
             browser: Browser = p.chromium.launch(headless=True)
+            viewport: ViewportSize = {'width': BASE_VIEWPORT_WIDTH, 'height': BASE_VIEWPORT_HEIGHT}
 
-            viewport_size: ViewportSize = {"width": 2560, "height": 1440}
-            page = browser.new_page(viewport=viewport_size)
+            page = browser.new_page(
+                viewport=viewport,
+                device_scale_factor=DEVICE_SCALE_FACTOR
+            )
 
-            print(f"Navigating to: {url}")
-            page.goto(url, wait_until='networkidle', timeout=90000)
-
-            try:
-                page.wait_for_selector("canvas", state="visible", timeout=30000)
-                time.sleep(5)
-            except Exception as e:
-                print(f"Warning: Canvas not detected or slow loading: {e}")
-
-            def take_smart_screenshot(file_path):
-                """智能截图"""
+            def scroll_past_header():
+                """计算并滚动以隐藏顶部导航栏"""
                 try:
-                    canvas = page.locator("canvas").first
-                    box = canvas.bounding_box()
-                    if box:
-                        bottom_y = box['y'] + box['height'] + 180
-                        clip_rect: FloatRect = {
-                            'x': 0.0,
-                            'y': 0.0,
-                            'width': 2560.0,
-                            'height': float(bottom_y)
-                        }
-                        page.screenshot(path=file_path, clip=clip_rect)
-                        print(f"Captured (Smart): {file_path}")
-                    else:
-                        raise Exception("Canvas bounding box is None")
+                    header = page.locator(".interapp-navigation").first
+                    if header.is_visible():
+                        header_box = header.bounding_box()
+                        if header_box:
+                            scroll_y = header_box['height'] * 0.9
+                            page.evaluate(f"window.scrollBy(0, {scroll_y})")
+                            time.sleep(0.5) # 等待滚动动画完成
                 except Exception as err:
-                    print(f"Smart screenshot failed ({err}), falling back to viewport screenshot.")
-                    page.screenshot(path=file_path)
-                    print(f"Captured (Fallback): {file_path}")
+                    print(f"Could not scroll past header: {err}")
 
-            # 1. Logarithmic Line Chart
+            # --- 1. 截取 Top Views 页面 ---
+            print(f"Navigating to Top Views: {topviews_url}")
+            page.goto(topviews_url, wait_until='domcontentloaded', timeout=15000)
+            page.wait_for_selector("#topview-entry-1", state="visible", timeout=15000)
+            scroll_past_header()
+            page.screenshot(path=topviews_path)
+            print(f"Captured: {topviews_path}")
+            images.append(topviews_path)
+
+            # --- 2. 截取 Page Views (折线图 & 饼图) ---
+            print(f"Navigating to Page Views: {pageviews_url}")
+            page.goto(pageviews_url, wait_until='domcontentloaded', timeout=15000)
+            page.wait_for_selector("canvas", state="visible", timeout=15000)
+            time.sleep(3) # 等待图表动画
+
+            # 2a. Logarithmic Line Chart
             try:
-                # 使用 exact=True 避免匹配到 "Automatically use logarithmic"
-                # 或者直接定位 class
+                settings_btn = page.locator(".js-test-settings").first
+                if settings_btn.is_visible():
+                    settings_btn.click()
+                    time.sleep(1)
+
+                    bezier_checkbox = page.locator(".js-test-bezier-curve").first
+                    if bezier_checkbox.is_visible():
+                        bezier_checkbox.click()
+                        time.sleep(0.5)
+
+                    save_btn = page.locator(".save-settings-btn").first
+                    if save_btn.is_visible():
+                        save_btn.click()
+                        time.sleep(2)
+
                 log_label = page.locator(".logarithmic-scale").first
                 if log_label.is_visible():
                     log_label.click()
                     time.sleep(3)
-                else:
-                    # 备选：精确文本匹配
-                    page.get_by_text("Logarithmic scale", exact=True).click()
-                    time.sleep(3)
-            except Exception as e:
-                print(f"Error toggling Logarithmic: {e}")
 
-            take_smart_screenshot(line_path)
+            except Exception as e:
+                print(f"Error configuring line chart: {e}")
+
+            scroll_past_header()
+            page.screenshot(path=line_path)
+            print(f"Captured: {line_path}")
             images.append(line_path)
 
-            # 2. Pie Chart
+            # 2b. Pie Chart
             try:
-                # 使用 CSS 类定位按钮，避免匹配到模态框标题 "Chart types"
                 chart_btn = page.locator(".btn-chart-type").first
                 if chart_btn.is_visible():
                     chart_btn.click()
                     time.sleep(1)
 
-                    # 在下拉菜单中点击 "Pie"
-                    pie_option = page.get_by_text("Pie", exact=True)
+                    pie_option = page.locator(".js-test-pie-chart").first
                     if pie_option.is_visible():
                         pie_option.click()
                         time.sleep(3)
-                    else:
-                        print("Pie option not visible.")
                 else:
                     print("Chart type button not found.")
             except Exception as e:
                 print(f"Error toggling Pie chart: {e}")
 
-            take_smart_screenshot(pie_path)
+            scroll_past_header()
+            page.screenshot(path=pie_path)
+            print(f"Captured: {pie_path}")
             images.append(pie_path)
 
             browser.close()
@@ -395,22 +418,35 @@ def main():
             print(f"No data for {lang['code']}, skipping.")
             continue
 
-        link = generate_link(lang['project'], articles_data, yesterday)
+        # --- 生成三类链接 ---
+        # 1. 完整列表链接 (Top 10)，用于推文文本，展示完整数据
+        full_list_link = generate_link(lang['project'], articles_data, yesterday)
+
+        # 2. 图表链接 (Top 5)，用于截图，使图表更清晰
+        chart_link_top5 = generate_link(lang['project'], articles_data[:5], yesterday)
+
+        # 3. Top Views 页面链接，用于截图
+        topviews_link = f"https://pageviews.wmcloud.org/topviews/?project={lang['project']}&platform=all-access&date={date_str}&excludes="
 
         # --- 截图 ---
         print("Taking screenshots...")
         pic_dir = ensure_picture_dir(date_str, lang['code'])
-        image_paths = capture_screenshots(link, pic_dir)
+        # 将多个URL传入截图函数
+        screenshot_urls = {
+            "topviews": topviews_link,
+            "pageviews": chart_link_top5
+        }
+        image_paths = capture_screenshots(screenshot_urls, pic_dir)
 
         # --- 构建推文文本 ---
-        tweet_text = construct_tweet(lang, date_str, articles_data, link)
+        tweet_text = construct_tweet(lang, date_str, articles_data, full_list_link)
         print(f"[Content Preview] {tweet_text[:50]}...")
 
         # 存入数据报告
         report_data["results"].append({
             "lang": lang['code'],
             "data": articles_data,
-            "link": link,
+            "link": full_list_link,  # 保存完整链接
             "images": image_paths
         })
 

@@ -1,5 +1,7 @@
 # Attention
-X (Twitter) post bot using Wikipedia daily pageview data
+Tracking Wikipedia daily pageview trend, and automatically post on X (Twitter).
+
+Feel free to check out the deployed [Project's GitHub Page](https://anonym-g.github.io/Attention).
 
 ## Project structure:
 
@@ -7,12 +9,40 @@ X (Twitter) post bot using Wikipedia daily pageview data
 Attention/
 ├── .github/
 │   └── workflows/
-│       └── daily_report.yml  # GitHub Action script
+│       └── daily_report.yml      # GitHub Action for daily execution
 ├── data/
-│   └── .json                 # Data files
+│   └── *.json                    # Cache for daily top articles data
+├── docs/
+│   ├── css/
+│   │   ├── style.css             # Main stylesheet for the visualization page
+│   │   └── variables.css         # CSS custom properties (colors, fonts, etc.)
+│   ├── data/
+│   │   └── history_*.json        # Processed historical data for animations
+│   ├── js/
+│   │   ├── app.js                # Main application entry point, initializes the app
+│   │   ├── constants.js          # Global constants for the frontend animation
+│   │   ├── data_loader.js        # Handles fetching and loading of data files
+│   │   ├── render.js             # Core animation loop and DOM rendering logic
+│   │   ├── state.js              # Global state management for the visualization
+│   │   ├── ui.js                 # UI event handlers and layout-related functions
+│   │   └── utils.js              # Frontend utility functions (calculations, color generation)
+│   ├── config.json               # Frontend configuration (e.g., color thresholds)
+│   └── index.html                # The HTML page that renders the animation
+├── pictures/
+│   └── YYYY-MM-DD/
+│       └── lang_code/*.png       # Daily screenshots for tweets
 ├── src/
-│   └── main.py               # Python main script
-├── requirements.txt
+│   ├── animator.py               # Renders the video using Playwright and FFmpeg
+│   ├── config.py                 # Main project configuration
+│   ├── main.py                   # Main script: orchestrates fetching, rendering, and posting
+│   ├── twitter_client.py         # Handles X (Twitter) API interactions
+│   ├── utils.py                  # Utility functions (file handling, cleanup)
+│   ├── wiki_api.py               # Fetches data from Wikimedia APIs
+│   └── test_video_gen.py         # Standalone script for testing video generation
+├── videos/
+│   └── YYYY-MM-DD/
+│       └── lang_code/*.mp4       # Daily video segments and final outputs
+├── requirements.txt              # Python dependencies
 └── README.md
 ```
 

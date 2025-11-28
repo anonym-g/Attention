@@ -1,3 +1,5 @@
 requests
 tweepy
 playwright
+numpy
+scipy

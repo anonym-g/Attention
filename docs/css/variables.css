@@ -1,0 +1,29 @@
+/* docs/css/variables.css */
+
+:root {
+    /* 颜色定义 */
+    --bg-color: #111111;
+    --card-bg: #1e1e1e;
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+    --accent-color: #3b82f6;
+
+    /* 界面尺寸 */
+    --header-height: 90px;
+    --bar-radius: 6px;
+
+    /* 字体定义 */
+    --font-family-base: "Times New Roman", "Noto Serif", "Georgia", "Songti SC", "SimSun", "NSimSun", "STSong", "Yu Mincho", "MS PMincho", "Noto Serif SC", "Noto Serif JP", serif;
+    --font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+    /* 字号定义 */
+    --font-size-title: 1.8rem;
+    --font-size-title-lg: 2.4rem;
+    --font-size-time: 1.8rem;
+    --font-size-time-lg: 2.4rem;
+    --font-size-bar-rank: 1.2rem;
+    --font-size-bar-title: 1.5rem;
+    --font-size-bar-val: 1.5rem;
+    --font-size-control: 1rem;
+    --font-size-btn: 0.95rem;
+}

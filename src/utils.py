@@ -65,7 +65,7 @@ def cleanup_old_videos(current_video_path: str):
     except Exception as e:
         print(f"Error cleaning up old videos: {e}")
 
-def cleanup_video_directories(keep_count: int = 15):
+def cleanup_video_directories(keep_count: int = 6):
     """
     清理 videos/ 下的旧日期目录，仅保留最近 keep_count 个。
     """

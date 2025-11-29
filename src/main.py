@@ -312,8 +312,8 @@ def main():
 
     save_daily_report_data(date_str, report_data)
 
-    # 执行目录清理 (保留最近 15 天)
-    cleanup_video_directories(keep_count=15)
+    # 执行目录清理 (保留最近 6 天)
+    cleanup_video_directories(keep_count=6)
 
     print("\nAll done.")
 

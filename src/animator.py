@@ -392,7 +392,7 @@ def add_background_music(video_path: str, output_path: str) -> str:
 
 def render_video(date_str, lang_code, config) -> Optional[str]:
     """
-    主入口。渲染并拼接 7 天的视频，并添加背景音乐。
+    主入口。渲染并拼接 5 天的视频，并添加背景音乐。
     """
     ensure_dirs()
     final_output = os.path.join(VIDEO_DIR, f"{date_str}_{lang_code}.mp4")
@@ -404,41 +404,52 @@ def render_video(date_str, lang_code, config) -> Optional[str]:
         return None
 
     today_date = datetime.strptime(date_str, "%Y-%m-%d")
-    dates_to_render = [(today_date - timedelta(days=6 - i)).strftime("%Y-%m-%d") for i in range(7)]
+    dates_to_render = [(today_date - timedelta(days=4 - i)).strftime("%Y-%m-%d") for i in range(5)]
     segment_files = []
 
-    for i, d_str in enumerate(dates_to_render):
-        prev_d_str = None
-        if i > 0:
-            prev_d_str = dates_to_render[i - 1]
-        else:
-            current_obj = datetime.strptime(d_str, "%Y-%m-%d")
-            prev_obj = current_obj - timedelta(days=1)
-            prev_check_str = prev_obj.strftime("%Y-%m-%d")
-            if prev_check_str in history_data['dates']:
-                prev_d_str = prev_check_str
+    # 检查最新的 segment (即昨天的 segment) 是否已存在。
+    latest_date_str = dates_to_render[-1]
+    latest_segment_path = os.path.join(VIDEO_DIR, latest_date_str, lang_code, f"segment_{latest_date_str}.mp4")
 
-        seg_dir = str(os.path.join(VIDEO_DIR, d_str, lang_code))
-        seg_path = os.path.join(seg_dir, f"segment_{d_str}.mp4")
+    all_required_paths = [os.path.join(VIDEO_DIR, d, lang_code, f"segment_{d}.mp4") for d in dates_to_render]
 
-        force_render = (d_str >= (today_date - timedelta(days=2)).strftime("%Y-%m-%d")) or not os.path.exists(seg_path)
+    if os.path.exists(latest_segment_path) and all(os.path.exists(p) for p in all_required_paths):
+        print(
+            f"  Latest segment for {lang_code} ({os.path.basename(latest_segment_path)}) already exists. Skipping render loop.")
+        segment_files = all_required_paths
+    else:
+        for i, d_str in enumerate(dates_to_render):
+            prev_d_str = None
+            if i > 0:
+                prev_d_str = dates_to_render[i - 1]
+            else:
+                current_obj = datetime.strptime(d_str, "%Y-%m-%d")
+                prev_obj = current_obj - timedelta(days=1)
+                prev_check_str = prev_obj.strftime("%Y-%m-%d")
+                if prev_check_str in history_data['dates']:
+                    prev_d_str = prev_check_str
 
-        if d_str not in history_data['dates']:
-            print(f"  Warning: No data for {d_str}, skipping.")
-            continue
-        if force_render and prev_d_str and prev_d_str not in history_data['dates']:
-            print(f"  Warning: No pre-roll data for {prev_d_str}, skipping render of {d_str}.")
-            continue
+            seg_dir = str(os.path.join(VIDEO_DIR, d_str, lang_code))
+            seg_path = os.path.join(seg_dir, f"segment_{d_str}.mp4")
 
-        if force_render:
-            success = render_day_segment_parallel(d_str, prev_d_str, lang_code, history_data, config, seg_path)
-            if not success:
-                print(f"  Failed to render segment {d_str}")
-        else:
-            print(f"  Using cached segment for {d_str}")
+            force_render = (d_str >= (today_date - timedelta(days=2)).strftime("%Y-%m-%d")) or not os.path.exists(seg_path)
 
-        if os.path.exists(seg_path):
-            segment_files.append(seg_path)
+            if d_str not in history_data['dates']:
+                print(f"  Warning: No data for {d_str}, skipping.")
+                continue
+            if force_render and prev_d_str and prev_d_str not in history_data['dates']:
+                print(f"  Warning: No pre-roll data for {prev_d_str}, skipping render of {d_str}.")
+                continue
+
+            if force_render:
+                success = render_day_segment_parallel(d_str, prev_d_str, lang_code, history_data, config, seg_path)
+                if not success:
+                    print(f"  Failed to render segment {d_str}")
+            else:
+                print(f"  Using cached segment for {d_str}")
+
+            if os.path.exists(seg_path):
+                segment_files.append(seg_path)
 
     if not segment_files:
         print("No segments generated.")
@@ -453,7 +464,7 @@ def render_video(date_str, lang_code, config) -> Optional[str]:
             f.write(f"file '{os.path.abspath(seg).replace('\\', '/')}'\n")
 
     video_only_path = os.path.join(temp_dir, 'video_no_audio.mp4')
-    print("Concatenating 7 days into a temporary video file...")
+    print("Concatenating 5 days into a temporary video file...")
     cmd_concat = f'ffmpeg -y -f concat -safe 0 -i "{list_file}" -c copy "{video_only_path}"'
     subprocess.call(cmd_concat, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

@@ -2,8 +2,8 @@ name: Daily Attention Report
 
 on:
   schedule:
-    # 每天 UTC 时间 02:00 运行 (确保 Wikimedia 已经生成昨天的数据。通常 UTC 00:00 后几小时内生成)
-    - cron: '0 2 * * *'
+    # 每天 UTC 时间 04:00 运行 (确保 Wikimedia 已经生成昨天的数据。通常 UTC 00:00 后几小时内生成)
+    - cron: '0 4 * * *'
   workflow_dispatch: # 允许手动点击按钮触发测试
 
 jobs:
